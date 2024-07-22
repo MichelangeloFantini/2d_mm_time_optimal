@@ -7,7 +7,7 @@ from .trajectory_computations import compute_all_trajectories
 from .velocity_generation import compute_velocities_in_cone_2d
 
 
-def optimize(points, v_max, v_min, a_max, a_min, prediction_horizon, X0, t_bound, motion_model, forward_kinematic, N=100, d_tol=0.01, constrain_final_point=False, cpc_tolerance=0.00001):
+def optimize(motion_class, points, v_max, v_min, a_max, a_min, prediction_horizon, X0, t_bound, motion_model, forward_kinematic, N=100, d_tol=0.01, constrain_final_point=False, cpc_tolerance=0.00001, obstacles=[]):
     ''' Given a list of points, compute all possible trajectories between the points using the provided acceleration and velocity constraints.'''
     # _____SETUP CASADI PROBLEM_____
     if prediction_horizon == None:
@@ -141,6 +141,21 @@ def optimize(points, v_max, v_min, a_max, a_min, prediction_horizon, X0, t_bound
         g.append(cpc(X[mu_start_index: nu_start_index, k], X[:u_start_index, k], X[nu_start_index:, k]))
         lbg.append(ca.DM.zeros(lambda_num_cols))
         ubg.append(ca.DM.ones(lambda_num_cols)*cpc_tolerance)
+        # Obstacle constraints
+        if len(obstacles) > 0:
+            balls = motion_class.generate_balls_constraints(X[:vel_start_index, k])
+        for obstacle in obstacles:
+            for ball in balls:
+                g.append(ca.norm_2(ball - ca.vertcat(obstacle.x, obstacle.y)) - obstacle.radius - motion_class.ball_radius)
+                lbg.append(0)
+                ubg.append(np.inf)
+        # Add floor constraints
+        for i in range(1,3):
+            g.append(balls[-i])
+            lbg.append(ca.DM.zeros(2))
+            ubg.append(ca.DM.ones(2)*np.inf)
+
+                
         # Append to lbx and ubx
         lbx.append(cur_lbx)
         ubx.append(cur_ubx)

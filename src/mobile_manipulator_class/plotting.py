@@ -40,7 +40,7 @@ def plot_static(self, x, theta1, theta2, goal):
         plt.grid(True)
         plt.show()
     
-def plot_dynamic(self, start_point, dict_res, shortest, points):
+def plot_dynamic(self, start_point, dict_res, shortest, points, circle_decomposition=False, obstacles=[]):
     results, times = self.process_results(dict_res, shortest)
     def update(frame):
         # Update joint angles
@@ -67,6 +67,12 @@ def plot_dynamic(self, start_point, dict_res, shortest, points):
         arm1.angle = np.degrees(theta1)
         arm2.set_xy((x2, y2))
         arm2.angle = np.degrees(theta1 + theta2)
+        # circle decomposition
+        if circle_decomposition:
+            balls = self.generate_balls((x, theta1, theta2))
+            for i in range(len(balls)):
+                circles[i].center = balls[i]
+
         plt.xlim(x2-5, x2+5)
         plt.ylim(0, y2+2)
         return arm1, arm2, base_rect, wheel1, wheel2
@@ -97,6 +103,18 @@ def plot_dynamic(self, start_point, dict_res, shortest, points):
     ax.add_patch(arm1)
     ax.add_patch(arm2)
 
+    # Plot circle decomposition
+    circles = []
+    if circle_decomposition:
+        balls = self.generate_balls(start_point)
+        for ball in balls:
+            circles.append(Circle(ball, self.ball_radius, color='blue'))
+            ax.add_patch(circles[-1])
+    
+    # Plot obstacles
+    for obstacle in obstacles:
+        ax.add_patch(obstacle.get_patch())
+
     # Set plot limits and aspect ratio
     plt.xlim(x2-5, x2+5)
     plt.ylim(0, y2+2)
@@ -116,7 +134,8 @@ def plot_dynamic(self, start_point, dict_res, shortest, points):
     plt.grid(True)
     plt.show()
 
-def plot_dynamic_params(self, params, interval=50, points=None):
+def plot_dynamic_params(self, params, interval=50, points=None, circle_decomposition=False, obstacles=[]):
+    ''' Plot the configuration of the mobile manipulator over time, given the parameters. Used for plotting the results of the optimization. '''
     def update(frame):
         # Update joint angles
         x, theta1, theta2 = params[frame]
@@ -130,6 +149,11 @@ def plot_dynamic_params(self, params, interval=50, points=None):
         arm1.angle = np.degrees(theta1)
         arm2.set_xy((x2, y2))
         arm2.angle = np.degrees(theta1 + theta2)
+        # circle decomposition
+        if circle_decomposition:
+            balls = self.generate_balls(params[frame])
+            for i in range(len(balls)):
+                circles[i].center = balls[i]
         plt.xlim(x2-5, x2+5)
         plt.ylim(0, y2+2)
         return arm1, arm2, base_rect, wheel1, wheel2
@@ -157,6 +181,18 @@ def plot_dynamic_params(self, params, interval=50, points=None):
     ax.add_patch(arm1)
     ax.add_patch(arm2)
 
+    # Plot circle decomposition
+    circles = []
+    if circle_decomposition:
+        balls = self.generate_balls(params[0])
+        for ball in balls:
+            circles.append(Circle(ball, self.ball_radius, color='blue'))
+            ax.add_patch(circles[-1])
+
+    # plot obstacles
+    for obstacle in obstacles:
+        ax.add_patch(obstacle.get_patch())
+
     # Set plot limits and aspect ratio
     plt.xlim(x2-5, x2+5)
     plt.ylim(0, y2+2)
@@ -175,6 +211,7 @@ def plot_dynamic_params(self, params, interval=50, points=None):
     plt.show()
 
 def plot_end_effector(self, result, dict_res, shortest, points):
+    ''' Plot all the end effector trajectories of the mobile manipulator, sampled from the sampling algorithm. '''
     for i in result:
         a0_x, a1_x, a2_x, a3_x, a4_x, a5_x, tf_x, ts_x, ts_1_x = i[0]
         a0_theta1, a1_theta1, a2_theta1, a3_theta1, a4_theta1, a5_theta1, tf_theta1, ts_theta1, ts_1_theta1 = i[1]
@@ -217,6 +254,7 @@ def plot_end_effector(self, result, dict_res, shortest, points):
     plt.show()
 
 def plot_end_effector_best_trajectory_and_velocity(self, result, dict_res, shortest, points):
+    ''' Plot the best trajectory and velocities of the mobile manipulator, sampled from the sampling algorithm. '''
     x3_values = []
     y3_values = []
     v_base = []
@@ -273,6 +311,7 @@ def plot_end_effector_best_trajectory_and_velocity(self, result, dict_res, short
     plt.show()
 
 def plot_end_effector_best(self, result, dict_res, shortest, points):
+    ''' Plot the best trajectory of the mobile manipulator, sampled from the sampling algorithm. '''
     for i in range(len(shortest)-1):
         x_res, theta1_res, theta2_res = dict_res[shortest[i]][shortest[i+1]]
         a0_x, a1_x, a2_x, a3_x, a4_x, a5_x, tf_x, ts_x, ts_1_x = x_res

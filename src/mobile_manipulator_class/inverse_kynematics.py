@@ -53,7 +53,6 @@ def new_pose_luoponov_control(self, current_params, goal, t=0.1, max_iter=100):
     e, J = self.compute_error(current_params, goal)
     x, theta1, theta2 = current_params
     goal_q_dot_ee = np.array([[goal[2]], [goal[3]]])
-
     count = 0
     params = [(x, theta1, theta2)]
     while np.linalg.norm(e) > 0.01 and count < max_iter:

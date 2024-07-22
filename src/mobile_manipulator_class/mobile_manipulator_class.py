@@ -9,22 +9,28 @@ from src.point_mass_trajectory_optimization import space_curve, velocity_curve
 
 def euler_to_rotation_matrix(roll, pitch, yaw):
     """
-    Convert Euler angles to a 3D rotation matrix (SO(3)).
+    Convert Euler angles to a 3D rotation matrix (SO(3)) using CasADi.
     """
-    R_x = np.array([[1, 0, 0],
-                    [0, np.cos(roll), -np.sin(roll)],
-                    [0, np.sin(roll), np.cos(roll)]])
+    R_x = ca.vertcat(
+        ca.horzcat(1, 0, 0),
+        ca.horzcat(0, ca.cos(roll), -ca.sin(roll)),
+        ca.horzcat(0, ca.sin(roll), ca.cos(roll))
+    )
     
-    R_y = np.array([[np.cos(pitch), 0, np.sin(pitch)],
-                    [0, 1, 0],
-                    [-np.sin(pitch), 0, np.cos(pitch)]])
+    R_y = ca.vertcat(
+        ca.horzcat(ca.cos(pitch), 0, ca.sin(pitch)),
+        ca.horzcat(0, 1, 0),
+        ca.horzcat(-ca.sin(pitch), 0, ca.cos(pitch))
+    )
     
-    R_z = np.array([[np.cos(yaw), -np.sin(yaw), 0],
-                    [np.sin(yaw), np.cos(yaw), 0],
-                    [0, 0, 1]])
+    R_z = ca.vertcat(
+        ca.horzcat(ca.cos(yaw), -ca.sin(yaw), 0),
+        ca.horzcat(ca.sin(yaw), ca.cos(yaw), 0),
+        ca.horzcat(0, 0, 1)
+    )
 
     # Combine the rotation matrices around x, y, and z axes
-    R = R_z @ R_y @ R_x
+    R = ca.mtimes(R_z, ca.mtimes(R_y, R_x))
     return R
 
 class MobileManipulator:
@@ -47,6 +53,8 @@ class MobileManipulator:
         self.m1 = 1
         self.m2 = 1
         self.m3 = 1
+
+        self.ball_radius = 0.25
         from . import plotting
         setattr(MobileManipulator, 'plot_dynamic', plotting.plot_dynamic)
         setattr(MobileManipulator, 'plot_static', plotting.plot_static)
@@ -77,21 +85,56 @@ class MobileManipulator:
         setattr(MobileManipulator, 'robot_motion_model', motion_model.robot_motion_model)
         from . import trajectory_computation
         setattr(MobileManipulator, 'calculate_trajectory', trajectory_computation.calculate_trajectory)
+        from . import generate_balls
+        setattr(MobileManipulator, 'generate_balls', generate_balls.generate_balls)
+        setattr(MobileManipulator, 'generate_balls_constraints', generate_balls.generate_balls_constraints)
+
+    def link_position_function(self):
+        x = ca.MX.sym('x')
+        theta1 = ca.MX.sym('theta1')
+        theta2 = ca.MX.sym('theta2')
+
+        q = ca.vertcat(x, theta1, theta2)
+        T_I_0 = ca.vertcat(
+            ca.horzcat(1, 0, 0, x),
+            ca.horzcat(0, 1, 0, self.base_y),
+            ca.horzcat(0, 0, 1, 0),
+            ca.horzcat(0, 0, 0, 1)
+        )
+        T_0_1 = ca.vertcat(
+            ca.horzcat(ca.cos(theta1), -ca.sin(theta1), 0, self.base_length/2),
+            ca.horzcat(ca.sin(theta1), ca.cos(theta1), 0, self.base_width/2),
+            ca.horzcat(0, 0, 1, 0),
+            ca.horzcat(0, 0, 0, 1)
+        )
+        T_1_2 = ca.vertcat(
+            ca.horzcat(ca.cos(theta2), -ca.sin(theta2), 0, self.arm_length1),
+            ca.horzcat(ca.sin(theta2), ca.cos(theta2), 0, 0),
+            ca.horzcat(0, 0, 1, 0),
+            ca.horzcat(0, 0, 0, 1)
+        )
+        T_2_3 = ca.vertcat(
+            ca.horzcat(1, 0, 0, self.arm_length2),
+            ca.horzcat(0, 1, 0, 0),
+            ca.horzcat(0, 0, 1, 0),
+            ca.horzcat(0, 0, 0, 1)
+        )
+        x0 = T_I_0[:2, 3]
+        T_I_1 = T_I_0 @ T_0_1
+        x1 = T_I_1[:2, 3]
+        T_I_2 = T_I_1 @ T_1_2
+        x2 = T_I_2[:2, 3]
+        T_I_3 = T_I_2 @ T_2_3
+        x3 = T_I_3[:2, 3]
+        return ca.Function('link_position', [q], [x0, x1, x2, x3])
+
+    def compute_link_positions(self, x, theta1, theta2):
+        func = self.link_position_function()
+        res = func(ca.vertcat(x, theta1, theta2))
+
+        return float(res[0][0]), float(res[0][1]), float(res[1][0]), float(res[1][1]), float(res[2][0]), float(res[2][1]), float(res[3][0]), float(res[3][1])
 
 
-    def compute_link_positions(self, x, theta1, theta2): 
-        TI_0 = np.block([[np.eye(3), np.array([[x], [self.base_y], [0]])], [0, 0, 0, 1]])
-        T01 = np.block([[euler_to_rotation_matrix(0, 0, theta1), np.array([[self.base_length/2], [self.base_width/2], [0]])], [0, 0, 0, 1]])
-        T12 = np.block([[euler_to_rotation_matrix(0, 0, theta2), np.array([[self.arm_length1], [0], [0]])], [0, 0, 0, 1]])
-        T23 = np.block([[euler_to_rotation_matrix(0, 0, 0), np.array([[self.arm_length2], [0], [0]])], [0, 0, 0, 1]]) # end effector
-        x0, y0 = TI_0[0, 3], TI_0[1, 3]
-        TI1 = TI_0 @ T01
-        x1, y1 = TI1[0, 3], TI1[1, 3]
-        TI2 = TI1 @ T12
-        x2, y2 = TI2[0, 3], TI2[1, 3]
-        TI3 = TI2 @ T23
-        x3, y3 = TI3[0, 3], TI3[1, 3]
-        return x0, y0, x1, y1, x2, y2, x3, y3
     
     def compute_jacobian(self, theta1, theta2):
         J = np.array([[-self.arm_length1*np.sin(theta1) - self.arm_length2*np.sin(theta1 + theta2), -self.arm_length2*np.sin(theta1 + theta2)],
