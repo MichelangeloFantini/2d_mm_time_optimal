@@ -144,17 +144,16 @@ def optimize(motion_class, points, v_max, v_min, a_max, a_min, prediction_horizo
         # Obstacle constraints
         if len(obstacles) > 0:
             balls = motion_class.generate_balls_constraints(X[:vel_start_index, k])
+            # Add floor constraints
+            for i in range(1,3):
+                g.append(balls[-i])
+                lbg.append(ca.DM.zeros(2))
+                ubg.append(ca.DM.ones(2)*np.inf)
         for obstacle in obstacles:
             for ball in balls:
                 g.append(ca.norm_2(ball - ca.vertcat(obstacle.x, obstacle.y)) - obstacle.radius - motion_class.ball_radius)
                 lbg.append(0)
                 ubg.append(np.inf)
-        # Add floor constraints
-        for i in range(1,3):
-            g.append(balls[-i])
-            lbg.append(ca.DM.zeros(2))
-            ubg.append(ca.DM.ones(2)*np.inf)
-
                 
         # Append to lbx and ubx
         lbx.append(cur_lbx)

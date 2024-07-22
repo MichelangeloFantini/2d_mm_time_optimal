@@ -3,7 +3,7 @@ import numpy as np
 
 
 
-def setup_single_problem(start, goal, v_max, v_min, a_max, a_min, motion_model, forward_kinematic, N=100, d_tol=0.01, initial_point=False, state_dim=2, i=0):
+def setup_single_problem(motion_class, start, goal, v_max, v_min, a_max, a_min, motion_model, forward_kinematic, N=100, d_tol=0.01, initial_point=False, state_dim=2, i=0, obstacles=[]):
     '''Function that generates the constraints needed to slove an NLP to minimize the time taken for a robot to move between two points'''
     # Check dimension of the points
     X = ca.MX.sym(f'X_{i}', state_dim*3, N)
@@ -49,6 +49,19 @@ def setup_single_problem(start, goal, v_max, v_min, a_max, a_min, motion_model, 
         ubg.append(ca.DM.zeros(2*state_dim))
         lbx.append(cur_lbx)
         ubx.append(cur_ubx)
+        # Obstacle constraints
+        if len(obstacles) > 0:
+            balls = motion_class.generate_balls_constraints(X[:vel_start_index, i])
+            # Add floor constraints
+            for i in range(1,3):
+                g.append(balls[-i])
+                lbg.append(ca.DM.zeros(2))
+                ubg.append(ca.DM.ones(2)*np.inf)
+        for obstacle in obstacles:
+            for ball in balls:
+                g.append(ca.norm_2(ball - ca.vertcat(obstacle.x, obstacle.y)) - obstacle.radius - motion_class.ball_radius)
+                lbg.append(0)
+                ubg.append(np.inf)
     
     # Final point constraints
     cur_lbx = ca.DM.ones(total_elements)*-np.inf
@@ -67,7 +80,7 @@ def setup_single_problem(start, goal, v_max, v_min, a_max, a_min, motion_model, 
 
                
 
-def optimize_sequential(points, v_max, v_min, a_max, a_min, prediction_horizon, X0, motion_model, forward_kinematic, Ns, d_tol=0.01):
+def optimize_sequential(motion_class, points, v_max, v_min, a_max, a_min, prediction_horizon, X0, motion_model, forward_kinematic, Ns, d_tol=0.01, obstacles=[]):
     X = []
     g = []
     lbg = []
@@ -84,7 +97,7 @@ def optimize_sequential(points, v_max, v_min, a_max, a_min, prediction_horizon, 
             start_point = X0[prediction_horizon:prediction_horizon+2*state_dim]
         else:
             start_point = X[-3*state_dim:]
-        X_i, g_i, lbg_i, ubg_i, lbx_i, ubx_i, t_i = setup_single_problem(start_point, points[i+1], v_max, v_min, a_max, a_min, motion_model, forward_kinematic, N=Ns[i], d_tol=d_tol, initial_point=is_initial_point, state_dim=state_dim, i=i)
+        X_i, g_i, lbg_i, ubg_i, lbx_i, ubx_i, t_i = setup_single_problem(motion_class, start_point, points[i+1], v_max, v_min, a_max, a_min, motion_model, forward_kinematic, N=Ns[i], d_tol=d_tol, initial_point=is_initial_point, state_dim=state_dim, i=i, obstacles=obstacles)
         X = ca.vertcat(X, X_i)
         g.extend(g_i)
         lbg.extend(lbg_i)
