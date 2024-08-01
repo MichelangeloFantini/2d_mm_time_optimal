@@ -10,7 +10,6 @@ def inverse_kynematics_dynamic(self, current_end_effector, current_params, futur
     time_interval = future_goals[0][4] - current_end_effector[4]
 
     # x = current_params[0]+current_end_effector[2]*time_interval
-    x = future_goals[0][0] - 1.5
     # x = future_goals[0][0] - 0.5
     # print('x:', x)
     # x, y = self.base_movement(current_end_effector, future_goals)
@@ -19,14 +18,15 @@ def inverse_kynematics_dynamic(self, current_end_effector, current_params, futur
     # print('x:', x, 'y:', y)
     # First determine the base movement
 
-    error_params = (x, current_params[1], current_params[2])
+    error_params = (current_params[0], current_params[1], current_params[2])
     # e, J  = self.compute_error(error_params, future_goals[0])
     # Compute the joint velocities
     # goal_q_dot_ee = np.array([[future_goals[0][2]], [future_goals[0][3]]])
     # Compute the new joint angles
     # theta1, theta2 = self.new_pose_taylor(current_params, e, J)
     # theta1, theta2 = self.new_pose_luoponov(current_params, e, J, future_goals[0], time_interval, k)
-    x, theta1, theta2 = self.converge_to_goal(error_params, future_goals[0], t=0.1)
+    # x, theta1, theta2 = self.converge_to_goal(error_params, future_goals[0], t=0.1)
+    x, theta1, theta2 = self.new_pose_luoponov_control(error_params, future_goals[0], t=0.1)
 
     return x, theta1, theta2
 
@@ -57,15 +57,16 @@ def new_pose_luoponov_control(self, current_params, goal, t=0.1, max_iter=100):
     count = 0
     params = [(x, theta1, theta2)]
     while np.linalg.norm(e) > 0.01 and count < max_iter:
-        J_inv = np.linalg.inv(J)
+        J_inv = np.linalg.pinv(J)
         q_dot = J_inv @ (goal_q_dot_ee + e)
-        theta1 += q_dot[0, 0]*t
-        theta2 += q_dot[1, 0]*t
+        x = x + q_dot[0, 0]*t
+        theta1 = theta1 + q_dot[1, 0]*t
+        theta2 = theta2 + q_dot[2, 0]*t
         e, J = self.compute_error((x, theta1, theta2), goal)
         count += 1
     if count == max_iter:
-        return None, None
-    return theta1, theta2
+        return None, None, None
+    return x, theta1, theta2
 
 def converge_to_goal(self, current_params, goal, t=1, max_iter=5):
     count =0
@@ -90,7 +91,7 @@ def compute_error(self, current_params, future_goal):
     ''' Compute the error for the inverse kinematics. '''
     x0, y0, x1, y1, x2, y2, x3, y3 = self.compute_link_positions(current_params[0], current_params[1], current_params[2])
     # Compute Jacobian
-    J = self.compute_jacobian(current_params[1], current_params[2])
+    J = self.compute_jacobian_whole(current_params)
     # compute inverse of Jacobian
     e = np.array([[future_goal[0] - x3], [future_goal[1] - y3]])
     return e, J
